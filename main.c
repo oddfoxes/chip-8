@@ -7,6 +7,29 @@
 
 #define MEM_SIZE 4096
 #define RAND_MAX 255
+#define WIDTH 64
+#define HEIGHT 32
+#define FONTSET_ADDR 0x050
+
+unsigned char chip8_fontset[80] =
+{
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+};
 
 struct CHIP8
 {
@@ -22,10 +45,12 @@ struct CHIP8
     uint16_t PC;
     uint16_t I;
 
-    uint8_t display[64 * 32];
+    uint8_t display[WIDTH * HEIGHT];
     uint8_t keypad[16];
     uint16_t delay_timer;
     uint16_t sound_timer;
+
+    _Bool update_display;
 };
 
 uint8_t load_rom(struct CHIP8* chip8, const char* path)
@@ -84,10 +109,16 @@ void execute_instruction(struct CHIP8* chip8)
             switch (NN)
             {
                 case 0xE0:      // 00E0 (clear display)
-                    memset(chip8->display, 0, sizeof(uint8_t) * 64 * 32);
+                    memset(chip8->display, 0, sizeof(uint8_t) * WIDTH * HEIGHT);
                     break;
                 case 0xEE:      // 00EE (return)
-                    // TODO: work
+                    if (chip8->SP > 0)
+                    {
+                        chip8->SP--;
+                        chip8->PC = chip8->stack[chip8->SP];
+                        chip8->stack[chip8->SP] = 0;
+                    }    
+
                     break;
                 default:        // 0000 (?)
                     break;
@@ -98,7 +129,13 @@ void execute_instruction(struct CHIP8* chip8)
             chip8->PC = NNN;
             break;
         case 0x2000:            // 2NNN (call subroutine at NNN)
-            // TODO: work
+            if (chip8->SP < 12)
+            {
+                chip8->stack[chip8->SP] = chip8->PC;
+                chip8->SP++;
+                chip8->PC = NNN;
+            }    
+        
             break;
         case 0x3000:            // 3XNN (if Vx == NN, skip next instruction)
             if (chip8->V[X] == NN)
@@ -134,36 +171,36 @@ void execute_instruction(struct CHIP8* chip8)
                     chip8->V[X] = chip8->V[X] ^ chip8->V[Y];
                     break;
                 case 0x0004:    // 8XY4 (add Vy to Vx, set VF to 1 if overflow, 0 if not)
-                    chip8->V[0xF] = (chip8->V[X] + chip8->V[Y] > 255);
+                    uint16_t sum = chip8->V[X] + chip8->V[Y];
 
-                    // my brain cant think of all this code at once so its probably not going to work first try
-                    // but i tried my best and i wont really know if its wrong i cant check if its right cuz of why it might be wrong
+                    chip8->V[0xF] = (sum > 255U);
+                    chip8->V[X] = sum & 0xFFu;
 
-                    chip8->V[X] += chip8->V[Y];
                     break;
                 case 0x0005:    // 8XY5 (subtract Vy from Vx, set VF to 1 if underflow, 0 if not)
-                    chip8->V[0xF] = (0 > chip8->V[X] - chip8->V[Y]);
-
+                    chip8->V[0xF] = (chip8->V[X] > chip8->V[Y]);
                     chip8->V[X] -= chip8->V[Y];
+
                     break;
                 case 0x0006:    // 8XY6 (store least significant bit to VF, then shift Vx right once)
-                    chip8->V[0xF] = chip8->V[X] & 0x0F;
-                    
+                    chip8->V[0xF] = (chip8->V[X] & 0x1);
                     chip8->V[X] >>= 1;
+
                     break;
                 case 0x0007:    // 8XY7 (set Vx to Vy minus Vx, set VF to 1 if underflow, 0 if not)
-                    chip8->V[0xF] = (0 > chip8->V[Y] - chip8->V[X]);
-
+                    chip8->V[0xF] = (chip8->V[Y] > chip8->V[X]);
                     chip8->V[X] = chip8->V[Y] - chip8->V[X];
+
                     break;
                 case 0x000E:    // 8XYE (store most significant bit to VF, then shift Vx left once)
-                    chip8->V[0xF] = chip8->V[X] & 0xF0;
-                    
+                    chip8->V[0xF] = (chip8->V[X] >> 7) & 0x1;
                     chip8->V[X] <<= 1;
+
                     break;
                 default:
                     break;
             }
+            break;
         case 0x9000:            // 9XY0 (skip next instruction if Vx does not equal Vy)
             if (chip8->V[X] != chip8->V[Y])
                 chip8->PC += 2;
@@ -179,21 +216,52 @@ void execute_instruction(struct CHIP8* chip8)
             chip8->V[X] = rand() % (256) & NN; 
 
             break;
-        case 0xD000:            /* DXYN "Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
-                                   Each row of 8 pixels is read as bit-coded starting from memory location I;
-                                   I value does not change after the execution of this instruction.
-                                   As described above, VF is set to 1 if any screen pixels are flipped from set to unset when the sprite is drawn,
-                                   and to 0 if that does not happen." */
-            // TODO: work
+        case 0xD000:            // DXYN (draw)
+            chip8->V[0xF] = 0;
+
+            uint8_t VX = chip8->V[X];
+            uint8_t VY = chip8->V[Y];
+
+            for (int yl = 0; yl < N; yl++)
+            {
+                if (yl + VY >= HEIGHT)
+                    break;
+
+                uint32_t pxl = chip8->mem[chip8->I + yl];
+
+                for (int xl = 0; xl < 8; xl++)
+                {
+                    if (xl + VX >= WIDTH)
+                            break;
+
+                    if ((pxl & (0x80 >> xl)) != 0)
+                    {
+                        int i = VX + xl + ((VY + yl) * WIDTH);
+
+                        if (chip8->display[i] == 1 && chip8->V[0xF] != 1)
+                        {
+                            chip8->V[0xF] = 1;
+                        }
+
+                        chip8->display[i] ^= 1;
+                    }
+                }
+            }
+
+            chip8->update_display = 1;
             break;
         case 0xE000:
             switch (NN)
             {
                 case 0x9E:      // EX9E (skips next instruction if key stored in Vx is pressed)
-                    // TODO: work
+                    if (chip8->keypad[chip8->V[X]])
+                        chip8->PC += 2;    
+
                     break;
                 case 0xA1:      // EXA1 (skips next instruction if key stored in Vx is not pressed)
-                    // TODO: work
+                    if (!chip8->keypad[chip8->V[X]])
+                        chip8->PC += 2;
+
                     break;
                 default:
                     break;
@@ -207,22 +275,44 @@ void execute_instruction(struct CHIP8* chip8)
                     chip8->V[X] = chip8->delay_timer;
                     break;
                 case 0x0A:      // FX0A (block all instructions until next keypress, timers should continue)
-                    // TODO: work
+                    _Bool key_pressed = 0;
+
+                    for (uint8_t i = 0; i < 16; i++)
+                    {
+                        if (chip8->keypad[i])
+                        {
+                            chip8->V[X] = i;
+                            key_pressed = 1;
+                            break;
+                        }
+                    }
+
+                    if (!key_pressed) // repeat instruction unless key was pressed
+                        chip8->PC -= 2;
+
                     break;
                 case 0x15:      // FX15 (set delay timer to Vx)
                     chip8->delay_timer = chip8->V[X];
+
                     break;
                 case 0x18:      // FX18 (set sound timer to Vx)
                     chip8->sound_timer = chip8->V[X];
+
                     break;
                 case 0x1E:      // FX1E (adds Vx to I)
                     chip8->I += chip8->V[X];
+
                     break;
                 case 0x29:      // FX29 (?)
-                    // TODO: work
+                    chip8->I = FONTSET_ADDR + ((chip8->V[X] & 0x0F) * 5);
+                    
                     break;
                 case 0x33:      // FX33 (?)
-                    // TODO: work
+                    uint16_t I_addr = chip8->I;
+
+                    chip8->mem[I_addr] = chip8->V[X] / 100;
+                    chip8->mem[I_addr + 1] = (chip8->V[X] / 10) % 10;
+                    chip8->mem[I_addr + 2] = chip8->V[X] % 10;
                     break;
                 case 0x55:      // FX55 (stores from V0 to VX inclusive into memory, starting at I)
                     for (int i = 0; i <= X; i++) // note to self '=' means inclusive
@@ -255,37 +345,56 @@ uint64_t get_milliseconds()
 
 int main()
 {
-    struct CHIP8 chip8;
+    struct CHIP8 chip8 = {0};
+    chip8.PC = 0x200;
 
     if (load_rom(&chip8, "flightrunner.ch8") != 0)
         return 1;
 
     printf("ROM loaded succesfully!\n");
 
+    // set rng seed
     srand(time(NULL));
 
-    double last_milli = (double)get_milliseconds();
+    // timer variables
+    double last_timer_milli = (double)get_milliseconds();
+    double last_instr_milli = (double)get_milliseconds();
     const double TIMER_INTERVAL_MS = 1000.0 / 60.0;
+    const double INSTR_INTERVAL_MS = 1000.0 / 500.0;
+
+    // load fontset
+    for (int i = 0; i < 80; i++)
+        chip8.mem[i + FONTSET_ADDR] = chip8_fontset[i];
 
     while (chip8.PC < MEM_SIZE)
     {
-        if (((double)get_milliseconds() - last_milli) > TIMER_INTERVAL_MS)
+        if (((double)get_milliseconds() - last_timer_milli) > TIMER_INTERVAL_MS)
         {
-            last_milli += TIMER_INTERVAL_MS;
+            last_timer_milli += TIMER_INTERVAL_MS;
 
             if (chip8.delay_timer > 0)
                 chip8.delay_timer--;
 
             if (chip8.sound_timer > 0)
             {
-                // todo: play sound
-
                 chip8.sound_timer--;
+                
+                // todo: play sound
+            }
+
+            if (chip8.update_display)
+            {
+                chip8.update_display = 0;
+
+                // todo: update graphics
             }
         }
 
-        printf("Delay: %d, Sound: %d\n", chip8.delay_timer, chip8.sound_timer);
+        if (((double)get_milliseconds() - last_instr_milli) > INSTR_INTERVAL_MS)
+        {
+            last_instr_milli += INSTR_INTERVAL_MS;
 
-        execute_instruction(&chip8);
+            execute_instruction(&chip8);
+        }
     }
 }
