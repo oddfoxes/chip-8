@@ -19,6 +19,8 @@
 
 - Flightrunner ROM: https://johnearnest.github.io/chip8Archive/play.html?p=flightrunner
 
+- Beep test ROM: https://github.com/Timendus/chip8-test-suite#beep-test
+
 - Fontset & implementations for a few instructions I struggled on: https://multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
 
 ### Other resources
