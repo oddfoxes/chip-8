@@ -323,13 +323,23 @@ void execute_instruction(struct CHIP8* chip8)
                     chip8->mem[I_addr + 2] = chip8->V[X] % 10;
                     break;
                 case 0x55:      // FX55 (stores from V0 to VX inclusive into memory, starting at I)
-                    for (int i = 0; i <= X; i++) // note to self '=' means inclusive
+                    for (int i = 0; i <= X; i++)
+                    {
+                        if (chip8->I + i >= MEM_SIZE)
+                            break;
+
                         chip8->mem[chip8->I + i] = chip8->V[i];
+                    }
 
                     break;
                 case 0x65:      // FX65 (oposite of FX55, loading from memory to registers instead)
-                    for (int i = 0; i <= X; i++) // note to self '=' means inclusive
+                    for (int i = 0; i <= X; i++)
+                    {
+                        if (chip8->I + i >= MEM_SIZE)
+                            break;
+
                         chip8->V[i] = chip8->mem[chip8->I + i];
+                    }
 
                     break;
                 default:
