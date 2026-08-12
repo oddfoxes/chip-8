@@ -4,9 +4,9 @@
 #include <time.h>
 #include <sys/time.h>
 #include <string.h>
+#include "raylib.h"
 
 #define MEM_SIZE 4096
-#define RAND_MAX 255
 #define WIDTH 64
 #define HEIGHT 32
 #define FONTSET_ADDR 0x050
@@ -29,6 +29,14 @@ unsigned char chip8_fontset[80] =
     0xE0, 0x90, 0x90, 0x90, 0xE0, // D
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+};
+
+uint8_t keymap[16] =
+{
+    KEY_ONE,    KEY_TWO,    KEY_THREE,  KEY_FOUR,
+    KEY_Q,      KEY_W,      KEY_E,      KEY_R,
+    KEY_A,      KEY_S,      KEY_D,      KEY_F,
+    KEY_Z,      KEY_X,      KEY_C,      KEY_V
 };
 
 struct CHIP8
@@ -61,7 +69,7 @@ uint8_t load_rom(struct CHIP8* chip8, const char* path)
 
     if (f == NULL)
     {
-        printf("ROM path doesn't exist. Failed to load to memory.\n");
+        printf("ROM path (%s) doesn't exist. Failed to load to memory.\n", path);
 
         return 1;
     }
@@ -343,12 +351,22 @@ uint64_t get_milliseconds()
     return (int64_t)(time.tv_sec) * 1000 + (time.tv_usec / 1000);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+    if (argc <= 1)
+    {
+        printf("no rom path provided.\nusage: chip8.exe <rom-path>\n");
+        return 1;
+    }
+
+    const int WIN_WIDTH = WIDTH * 10;
+    const int WIN_HEIGHT = HEIGHT * 10;
+
     struct CHIP8 chip8 = {0};
     chip8.PC = 0x200;
 
-    if (load_rom(&chip8, "flightrunner.ch8") != 0)
+    // failed to load?
+    if (load_rom(&chip8, argv[1]) != 0)
         return 1;
 
     printf("ROM loaded succesfully!\n");
@@ -356,45 +374,70 @@ int main()
     // set rng seed
     srand(time(NULL));
 
-    // timer variables
-    double last_timer_milli = (double)get_milliseconds();
-    double last_instr_milli = (double)get_milliseconds();
-    const double TIMER_INTERVAL_MS = 1000.0 / 60.0;
-    const double INSTR_INTERVAL_MS = 1000.0 / 500.0;
-
     // load fontset
     for (int i = 0; i < 80; i++)
         chip8.mem[i + FONTSET_ADDR] = chip8_fontset[i];
 
-    while (chip8.PC < MEM_SIZE)
+    // raylib
+    InitWindow(640, 320, "CHIP-8");
+    SetTargetFPS(60);
+
+    InitAudioDevice();
+    Music beep = LoadMusicStream("beep.wav");
+
+    while (chip8.PC < MEM_SIZE && !WindowShouldClose())
     {
-        if (((double)get_milliseconds() - last_timer_milli) > TIMER_INTERVAL_MS)
+        UpdateMusicStream(beep);
+        
+        // instructions 600/s
+        for (int i = 0; i < 10; i++)
         {
-            last_timer_milli += TIMER_INTERVAL_MS;
-
-            if (chip8.delay_timer > 0)
-                chip8.delay_timer--;
-
-            if (chip8.sound_timer > 0)
-            {
-                chip8.sound_timer--;
-                
-                // todo: play sound
-            }
-
-            if (chip8.update_display)
-            {
-                chip8.update_display = 0;
-
-                // todo: update graphics
-            }
-        }
-
-        if (((double)get_milliseconds() - last_instr_milli) > INSTR_INTERVAL_MS)
-        {
-            last_instr_milli += INSTR_INTERVAL_MS;
-
             execute_instruction(&chip8);
         }
+
+        // input
+        for (int i = 0; i < 16; i++)
+        {
+            chip8.keypad[i] = IsKeyDown(keymap[i]);
+        }
+
+        // timers
+        if (chip8.delay_timer > 0)
+            chip8.delay_timer--;
+
+        if (chip8.sound_timer > 0)
+        {
+            chip8.sound_timer--;
+            
+            if (!IsMusicStreamPlaying(beep))
+            {
+                PlayMusicStream(beep);
+            }
+        } else if (IsMusicStreamPlaying(beep)) {
+            StopMusicStream(beep);
+        }
+
+        // raylib 2
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        for (int x = 0; x < WIDTH; x++)
+        {
+            for (int y = 0; y < HEIGHT; y++)
+            {
+                if (chip8.display[x + (y * WIDTH)])
+                {
+                    DrawRectangle(x * (WIN_WIDTH / WIDTH), y * (WIN_HEIGHT / HEIGHT), WIN_WIDTH/WIDTH, WIN_HEIGHT/HEIGHT, WHITE);
+                }
+            }
+        }
+
+        EndDrawing();
     }
+
+    UnloadMusicStream(beep);
+    CloseAudioDevice();
+    CloseWindow();
+
+    return 0;
 }
