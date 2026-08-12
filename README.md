@@ -3,7 +3,7 @@
 ### Usage
 1. Generate build files: ``cmake -B build``
 2. Compile the program: ``cmake --build ./build``
-3. Run the executable: ``build\chip8.exe <rom_path>``
+3. Run the executable: ``build\chip8.exe .\flightrunner.ch8`` / ``build\chip8.exe <rom_path>``
 
 ### What I learned
 - I understand bit masking & shifting now far more than I did before. And can see where it's applied beyond how it works. 
