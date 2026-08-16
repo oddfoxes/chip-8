@@ -23,8 +23,6 @@
 
 - Fontset & implementations for a few instructions I struggled on: [How to write an emulator (CHIP-8 interpreter)](https://multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/)
 
-### Other resources
-
 - FX0A implementation: [Help with Fx0A - Reddit](https://www.reddit.com/r/EmuDev/comments/13p6g9m/help_with_fx0a/)
 
 - DXYN implementation: [Chip8 DXYN instruction - Reddit](https://www.reddit.com/r/EmuDev/comments/wxqqwt/chip8_dxyn_instruction/)
